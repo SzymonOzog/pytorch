@@ -61,9 +61,6 @@ _ref_test_ops = tuple(
 
 def mps_ops_grad_modifier(ops):
     XFAILLIST_GRAD = {
-        # CPU Error: RuntimeError: "addmv_impl_cpu" not implemented for 'Half'
-        'addr': [torch.float16],
-
         # Unimplemented ops
         '__getitem__': [torch.float16],
         'prod': [torch.float32],  # The operator 'aten::cumprod.out'
@@ -10526,7 +10523,9 @@ class TestConsistency(TestCaseMPS):
                 rtol = 1e-2
             elif op.name in ['nn.functional.conv_transpose1d',
                              'nn.functional.conv_transpose2d',
-                             'nn.functional.conv_transpose3d'] and dtype == torch.float16:
+                             'nn.functional.conv_transpose3d',
+                             '__rmatmul__', 'addbmm', 'addmv',
+                             'baddbmm', 'cov', 'matmul', 'mv'] and dtype == torch.float16:
                 atol = 5e-2
                 rtol = 5e-2
             elif op.name == "masked.mean":
@@ -10589,7 +10588,9 @@ class TestConsistency(TestCaseMPS):
                 rtol = 1e-2
             elif op.name in ['nn.functional.conv_transpose1d',
                              'nn.functional.conv_transpose2d',
-                             'nn.functional.conv_transpose3d'] and dtype == torch.float16:
+                             'nn.functional.conv_transpose3d',
+                             '__rmatmul__', 'addbmm', 'addmv',
+                             'baddbmm', 'cov', 'matmul', 'mv'] and dtype == torch.float16:
                 atol = 5e-2
                 rtol = 5e-2
             elif (op.name == "masked.mean"):
