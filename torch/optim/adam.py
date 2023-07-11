@@ -339,6 +339,8 @@ def _single_tensor_adam(params: List[Tensor],
         grad = grads[i] if not maximize else -grads[i]
         exp_avg = exp_avgs[i]
         exp_avg_sq = exp_avg_sqs[i]
+        if amsgrad:
+            max_exp_avg_sq = max_exp_avg_sqs[i]
         step_t = state_steps[i]
 
         # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
@@ -355,6 +357,8 @@ def _single_tensor_adam(params: List[Tensor],
             grad = torch.view_as_real(grad)
             exp_avg = torch.view_as_real(exp_avg)
             exp_avg_sq = torch.view_as_real(exp_avg_sq)
+            if amsgrad:
+                max_exp_avg_sq = torch.view_as_real(max_exp_avg_sq)
             param = torch.view_as_real(param)
 
         # Decay the first and second moment running average coefficient
@@ -458,6 +462,7 @@ def _multi_tensor_adam(params: List[Tensor],
         device_grads = [torch.view_as_real(x) if torch.is_complex(x) else x for x in device_grads]
         device_exp_avgs = [torch.view_as_real(x) if torch.is_complex(x) else x for x in device_exp_avgs]
         device_exp_avg_sqs = [torch.view_as_real(x) if torch.is_complex(x) else x for x in device_exp_avg_sqs]
+        device_max_exp_avg_sqs = [torch.view_as_real(x) if torch.is_complex(x) else x for x in device_max_exp_avg_sqs]
         device_params = [torch.view_as_real(x) if torch.is_complex(x) else x for x in device_params]
 
         # update steps
