@@ -1,7 +1,7 @@
 import functools
 
 import torch
-from ..ir import QConv
+from ..ir import QConv, QConvPointWisePT2E, TensorBox
 from ..pattern_matcher import Arg, CallFunction, KeywordArg, Match
 from .freezing_patterns import register_freezing_graph_pattern
 from .post_grad import register_lowering_pattern
@@ -143,8 +143,117 @@ def _register_quantized_conv_lowering(pattern):
     return qconv
 
 
+aten_qconv_pt2e_pattern = CallFunction(
+    torch.ops.onednn.qconv2d_pointwise.default,
+    KeywordArg("x"),
+    KeywordArg("x_scale"),  # x_scale
+    KeywordArg("x_zp"),  # x_zp
+    KeywordArg("packed_weight"),  # packed_weight
+    KeywordArg("w_scale"),  # w_scale
+    KeywordArg("w_zp"),  # w_zp
+    KeywordArg("b"),  # bias
+    KeywordArg("stride"),
+    KeywordArg("padding"),
+    KeywordArg("dilation"),
+    KeywordArg("groups"),
+    Arg(),  # output_scale
+    Arg(),  # output_zero_point
+    Arg(),  # fp32_output
+    Arg(),  # attr
+    Arg(),  # scalars
+    Arg(),  # algorithm
+)
+
+quantize_conv_output_pattern_pt2e = CallFunction(
+    prims.convert_element_type.default,
+    CallFunction(
+        aten.clamp_max.default,
+        CallFunction(
+            aten.clamp_min.default,
+            CallFunction(
+                aten.add.Tensor,
+                CallFunction(
+                    aten.round.default,
+                    CallFunction(
+                        aten.mul.Tensor,
+                        aten_qconv_pt2e_pattern,  # output of conv
+                        KeywordArg("o_inv_scale"),
+                    ),
+                ),
+                KeywordArg("o_zp"),
+            ),
+            KeywordArg("o_qmin"),  # 0
+        ),
+        KeywordArg("o_qmax"),  # 127
+    ),
+    KeywordArg("o_dtype"),  # dtype=torch.uint8
+)
+
+pattern_match_count = 0
+
+
+def _register_quantized_conv_lowering_pt2e(pattern):
+    @register_lowering_pattern(pattern)
+    def qconv(match: Match, *args, **kwargs):
+        x, x_scale, x_zp = kwargs["x"], kwargs["x_scale"], kwargs["x_zp"]
+        b, stride, padding, dilation = (
+            kwargs["b"],
+            kwargs["stride"],
+            kwargs["padding"],
+            kwargs["dilation"],
+        )
+        groups, o_inv_scale, o_zero_point, o_dtype = (
+            kwargs["groups"],
+            kwargs["o_inv_scale"],
+            kwargs["o_zp"],
+            kwargs["o_dtype"],
+        )
+
+        # packed_weight = kwargs["packed_weight"]
+        packed_weight, w_scale, w_zp = (
+            kwargs["packed_weight"],
+            kwargs["w_scale"],
+            kwargs["w_zp"],
+        )
+        global pattern_match_count
+        pattern_match_count += 1
+        print(
+            "---- matched the pattern ----: {}".format(pattern_match_count), flush=True
+        )
+
+        weight_shape = packed_weight.get_size()
+        dim = len(weight_shape) - 2
+        return TensorBox.create(
+            QConvPointWisePT2E.create(
+                dim,
+                x,
+                x_scale,
+                x_zp,
+                packed_weight,
+                w_scale,
+                w_zp,
+                -1,  # w_axis delete it later
+                b,
+                stride,
+                padding,
+                dilation,
+                groups,
+                o_inv_scale,
+                o_zero_point,
+                o_dtype,
+                False,  # fp32_output
+                "none",  # unary_attr
+                [],  # unary_scalars
+                "",  # unary_algorithm
+            )
+        )
+
+    return qconv
+
+
 def register_quantization_lowerings():
     _register_quantized_conv_lowering(quantize_conv_output_pattern)
+    _register_quantized_conv_lowering_pt2e(quantize_conv_output_pattern_pt2e)
 
 
 dequant_per_channel_pattern = CallFunction(
