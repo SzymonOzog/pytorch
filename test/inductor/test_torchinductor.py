@@ -6784,6 +6784,49 @@ if HAS_CUDA and not TEST_WITH_ASAN:
             out[0].sum().backward()
             self.assertEqual(inp.grad, inp_ref.grad)
 
+        def test_optimize_indexing_assert(self):
+            def fn(x: torch.Tensor) -> torch.Tensor:
+                s = 1.0 * torch.arange(x.shape[0], device=x.device)
+                return x[s.long()]
+
+            fn_opt = torch.compile(fn)
+
+            x = torch.randn(8, device="cuda")
+            code = run_and_get_triton_code(fn_opt, x)
+
+            # Check that there's indirect indexing...
+            for c in code:
+                for line in c.split("\n"):
+                    if "tl.load" in line:
+                        stmt = line.split("=")[-1]
+                        # indirect indexing involves a `tmp` variable
+                        test_case.assertTrue(
+                            "tmp" in stmt,
+                            msg=f"Indirect indexing not present in code:\n{code}",
+                        )
+            # ...but we have managed to elide the assert
+            self.assertFalse("device_assert" in code)
+            self.assertEqual(fn_opt(x), fn(x))
+
+            # If we happen to have dynamic shapes
+            fn_opt = torch.compile(fn, dynamic=True)
+            x = torch.randn(8, device="cuda")
+            code = run_and_get_triton_code(fn_opt, x)
+
+            # ...we still have indirect indexing
+            for c in code:
+                for line in c.split("\n"):
+                    if "tl.load" in line:
+                        stmt = line.split("=")[-1]
+                        # indirect indexing involves a `tmp` variable
+                        test_case.assertTrue(
+                            "tmp" in stmt,
+                            msg=f"Indirect indexing not present in code:\n{code}",
+                        )
+            # ...but the assert is now there
+            self.assertTrue("device_assert" in code)
+            self.assertEqual(fn_opt(x), fn(x))
+
         def test_not_materialize_pointwise_reduction(self):
             def fn(a, b):
                 return (a - b).sum(dim=-1).amax(dim=-1)
