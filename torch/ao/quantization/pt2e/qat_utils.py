@@ -14,8 +14,8 @@ from .quantizer import (
     SharedQuantizationSpec,
     QuantizationSpecBase,
 )
-from .utils import _fold_bn_weights_into_conv_node
-from .utils import _get_aten_graph_module
+from .utils import fold_bn_weights_into_conv_node
+from .utils import get_aten_graph_module
 
 # Example inputs for `_conv2d_bn_pattern`, `_qat_conv2d_bn_pattern`, and `_qat_conv2d_bn_pattern_no_bias`
 _conv2d_bn_pattern_example_inputs = (
@@ -494,7 +494,7 @@ def _fuse_conv_bn_qat(m: GraphModule) -> GraphModule:
     m.graph.eliminate_dead_code()
     m.recompile()
     example_inputs = _conv2d_bn_pattern_example_inputs
-    match_pattern = _get_aten_graph_module(_conv2d_bn_pattern, example_inputs)
+    match_pattern = get_aten_graph_module(_conv2d_bn_pattern, example_inputs)
 
     # Step (1): Replace patterns with conv bias
     #
@@ -502,7 +502,7 @@ def _fuse_conv_bn_qat(m: GraphModule) -> GraphModule:
     # the replacement patterns for these two cases are substantially different.
     # TODO: use the public replace_pattern API once it also returns replacement nodes
 
-    replacement_pattern_with_conv_bias = _get_aten_graph_module(
+    replacement_pattern_with_conv_bias = get_aten_graph_module(
         _qat_conv2d_bn_pattern,
         example_inputs,
     )
@@ -517,7 +517,7 @@ def _fuse_conv_bn_qat(m: GraphModule) -> GraphModule:
 
     # Step (2): Replace patterns without conv bias
 
-    replacement_pattern_no_conv_bias = _get_aten_graph_module(
+    replacement_pattern_no_conv_bias = get_aten_graph_module(
         _qat_conv2d_bn_pattern_no_conv_bias,
         example_inputs,
     )
@@ -650,11 +650,11 @@ def _fold_conv_bn_qat(m: GraphModule) -> GraphModule:
         match_pattern = _get_quantized_qat_conv2d_bn_pattern(
             is_per_channel, has_relu, has_bias, relu_is_inplace,
         )
-        match_pattern = _get_aten_graph_module(match_pattern, example_inputs, **kwargs)
+        match_pattern = get_aten_graph_module(match_pattern, example_inputs, **kwargs)
         replacement_pattern = _get_folded_quantized_qat_conv2d_bn_pattern(
             is_per_channel, has_relu, has_bias, relu_is_inplace,
         )
-        replacement_pattern = _get_aten_graph_module(replacement_pattern, example_inputs, **kwargs)
+        replacement_pattern = get_aten_graph_module(replacement_pattern, example_inputs, **kwargs)
         replacements.extend(
             replace_pattern_with_filters(
                 m,
@@ -718,7 +718,7 @@ def _fold_conv_bn_qat(m: GraphModule) -> GraphModule:
                 )
 
         # fold bn weights into conv
-        _fold_bn_weights_into_conv_node(conv_node, conv_weight, conv_bias, bn_node, m)
+        fold_bn_weights_into_conv_node(conv_node, conv_weight, conv_bias, bn_node, m)
 
         # Copy over literal args for conv
         for _, original_node in _filter_nodes_map(r.nodes_map).items():

@@ -12,6 +12,11 @@ import operator
 from typing import Dict, Optional, Tuple, Callable, Any
 import copy
 
+__all__ = [
+    "fold_bn_weights_into_conv_node",
+    "get_aten_graph_module",
+    "remove_tensor_overload_for_qdq_ops",
+]
 
 def _get_tensor_constant_from_node(node, m):
     if node is None:
@@ -30,7 +35,7 @@ def _get_all_arguments(orig_args, orig_kwargs, args_schema):
             all_args.append(schema.default_value)
     return all_args
 
-def _fold_bn_weights_into_conv_node(
+def fold_bn_weights_into_conv_node(
     conv_node: Node,
     conv_weight_node: Node,
     conv_bias_node: Optional[Node],
@@ -108,7 +113,7 @@ def _fuse_conv_bn_(m: GraphModule) -> None:
         conv_node = n
         conv_weight_node = conv_node.args[1]
         conv_bias_node = conv_node.args[2]
-        _fold_bn_weights_into_conv_node(conv_node, conv_weight_node, conv_bias_node, bn_node, m)
+        fold_bn_weights_into_conv_node(conv_node, conv_weight_node, conv_bias_node, bn_node, m)
 
     m.graph.eliminate_dead_code()
     m.recompile()
@@ -174,7 +179,7 @@ def _get_node_name_to_scope(model: GraphModule) -> Dict[str, Tuple[str, type]]:
         node_name_to_scope[n.name] = current_scope
     return node_name_to_scope
 
-def _get_aten_graph_module(
+def get_aten_graph_module(
     pattern: Callable,
     example_inputs: Tuple[Any, ...],
     **kwargs,
@@ -195,7 +200,7 @@ def _get_aten_graph_module(
     aten_pattern.recompile()
     return aten_pattern
 
-def _remove_tensor_overload_for_qdq_ops(match_pattern: GraphModule) -> None:
+def remove_tensor_overload_for_qdq_ops(match_pattern: GraphModule) -> None:
     """ Remove .tensor overload for quantize/dequantize ops so that we can
     use the match_pattern that we get from torchdynamo export to match the output of convert_pt2e
     """
